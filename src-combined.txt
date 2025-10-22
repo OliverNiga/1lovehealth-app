@@ -1,0 +1,734 @@
+#### ./src/components/ControlButton.tsx
+// 2-space indentation
+
+import React, { useEffect, useMemo, useRef } from 'react';
+import { View, Text, Pressable, Animated } from 'react-native';
+import { Power } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { gradientProps, colors, radii } from '../styles/theme';
+
+type Props = {
+  isOn: boolean;          // HEATING or ACTIVE
+  isPreheating: boolean;  // HEATING
+  labelIdle?: string;     // "Press to Start"
+  labelOn?: string;       // "Press to Stop"
+  progress: number;       // 0..1 toward target (used for fill when preheating)
+  onPress(): void;
+};
+
+export default function ControlButton({
+  isOn,
+  isPreheating,
+  progress,
+  onPress,
+  labelIdle = 'Press to Start',
+  labelOn = 'Press to Stop',
+}: Props) {
+  // widthAnim drives the gradient fill (0..1)
+  const widthAnim = useRef(new Animated.Value(isOn ? 1 : isPreheating ? progress : 0)).current;
+
+  useEffect(() => {
+    const to = isOn ? 1 : isPreheating ? progress : 0;
+    Animated.timing(widthAnim, {
+      toValue: Math.max(0, Math.min(1, to)),
+      duration: 350,
+      useNativeDriver: false,
+    }).start();
+  }, [isOn, isPreheating, progress, widthAnim]);
+
+  const label = useMemo(() => {
+    if (!isOn && !isPreheating) return labelIdle;
+    if (isPreheating) return 'Heating...';
+    return labelOn;
+  }, [isOn, isPreheating, labelIdle, labelOn]);
+
+  // When there's any gradient fill, render white label/icon for contrast
+  const hasFill = isOn || (isPreheating && progress > 0.001);
+  const fg = hasFill ? '#ffffff' : colors.accent;
+
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button">
+      <View
+        style={{
+          height: 56,
+          borderRadius: radii.button,
+          overflow: 'hidden',
+          borderWidth: hasFill ? 0 : 2,
+          borderColor: colors.accent, // fallback border when idle
+          backgroundColor: hasFill ? 'transparent' : 'transparent',
+        }}
+      >
+        {/* Gradient fill layer — width animated */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: widthAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0%', '100%'],
+            }),
+            overflow: 'hidden',
+          }}
+        >
+          <LinearGradient {...gradientProps} style={{ flex: 1 }} />
+        </Animated.View>
+
+        {/* Content */}
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 }}>
+          <Power color={fg} size={20} />
+          <Text style={{ marginLeft: 8, color: fg, fontWeight: '700', fontSize: 18 }}>{label}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+#### ./src/components/ZoneRow.tsx
+// src/components/ZoneRow.tsx
+import React, { useMemo } from 'react';
+import { View, Text, Pressable } from 'react-native';
+import { colors } from '../styles/theme';
+import { TEMP } from '../utils/constants';
+import { Minus, Plus } from 'lucide-react-native';
+
+type Props = {
+  title: 'Upper' | 'Middle' | 'Lower';
+  current: number;     // current °F
+  target: number;      // target °F
+  onInc(): void;       // +1°F (clamped 77–194)
+  onDec(): void;       // -1°F
+};
+
+export default function ZoneRow({ title, current, target, onInc, onDec }: Props) {
+  const progress = useMemo(() => {
+    const denom = Math.max(1, target - TEMP.ambientDefaultF);
+    const num = Math.max(0, current - TEMP.ambientDefaultF);
+    return Math.max(0, Math.min(1, num / denom));
+  }, [current, target]);
+
+  return (
+    <View
+      className="rounded-2xl px-4 py-3 mb-3"
+      style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider }}
+    >
+      <View className="flex-row items-center justify-between">
+        <Pressable
+          onPress={onDec}
+          className="w-10 h-10 rounded-full items-center justify-center"
+          style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider }}
+        >
+          <Minus size={18} color={colors.textPrimary} />
+        </Pressable>
+
+        <View className="items-center flex-1">
+          <Text className="text-textPrimary text-[28px] font-bold">
+            {title} {Math.round(current)}°
+          </Text>
+
+          {/* mini progress bar */}
+          <View
+            className="w-[72%] h-2 mt-2 rounded-full"
+            style={{ backgroundColor: colors.divider }}
+          >
+            <View
+              className="h-2 rounded-full"
+              style={{ width: `${Math.round(progress * 100)}%`, backgroundColor: colors.accent }}
+            />
+          </View>
+
+          <Text className="text-textSecondary mt-2">Target {Math.round(target)}°</Text>
+        </View>
+
+        <Pressable
+          onPress={onInc}
+          className="w-10 h-10 rounded-full items-center justify-center"
+          style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider }}
+        >
+          <Plus size={18} color={colors.textPrimary} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+#### ./src/components/TimerSheet.tsx
+import React from 'react';
+import { Modal, View, Text, Pressable } from 'react-native';
+import { Minus, Plus, X } from 'lucide-react-native';
+import { colors } from '../styles/theme';
+
+type Props = {
+  visible: boolean;
+  minutes: number | null;
+  onClose(): void;
+  onChange(m: number): void; // clamps 1..90 or null->default 45
+};
+
+export default function TimerSheet({ visible, minutes, onClose, onChange }: Props) {
+  const m = Math.max(1, Math.min(90, minutes ?? 45));
+  return (
+    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: '#0008', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: '#12161B', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '700' }}>Session Timer</Text>
+            <Pressable onPress={onClose} hitSlop={8}><X size={20} color={colors.textSecondary} /></Pressable>
+          </View>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
+            <Pressable
+              onPress={() => onChange(Math.max(1, m - 1))}
+              style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#1A2129',
+                       borderWidth: 1, borderColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Minus size={22} color={colors.textPrimary} />
+            </Pressable>
+
+            <Text style={{ color: colors.textPrimary, fontSize: 36, fontWeight: '800' }}>{m} min</Text>
+
+            <Pressable
+              onPress={() => onChange(Math.min(90, m + 1))}
+              style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#1A2129',
+                       borderWidth: 1, borderColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Plus size={22} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={onClose}
+            style={{ marginTop: 16, borderRadius: 24, backgroundColor: '#FFB020', paddingVertical: 14, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#111', fontWeight: '800', fontSize: 16 }}>Done</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+#### ./src/components/FeatureControl.tsx
+import React from 'react';
+import { View, Text, Pressable } from 'react-native';
+import { colors } from '../styles/theme';
+
+type Props = {
+  title: string;
+  value: string;
+  icon: React.ReactNode;
+  onPress?: () => void;
+};
+
+export default function FeatureControl({ title, value, icon, onPress }: Props) {
+  return (
+    <Pressable onPress={onPress} className="flex-1">
+      <View
+        className="rounded-card p-4 mx-1 text-center items-center"
+        style={{ backgroundColor: '#161B21'}}
+      >
+        <View className="items-start mb-2 opacity-90">{icon}</View>
+        <Text className="text-textPrimary text-base font-semibold">{title}</Text>
+        <Text className="text-textSecondary mt-1">{value}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+#### ./src/components/TemperatureCircle.tsx
+// 2-space indentation
+
+import React, { useEffect, useRef } from 'react';
+import { View, Text, Animated } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient as SvgGrad, Stop } from 'react-native-svg';
+import { colors, gradientProps } from '../styles/theme';
+
+// + props: size, fontScale
+type Props = {
+  current: number;
+  target: number;
+  progress: number;
+  size?: number;       // px, default 280
+  fontScale?: number;  // multiplies number size, default 1
+};
+
+export default function TemperatureCircle({
+  current,
+  target,
+  progress,
+  size = 280,
+  fontScale = 1,
+}: Props) {
+  const STROKE = 16;
+  const R = (size - STROKE) / 2;
+  const CIRC = 2 * Math.PI * R;
+
+  const anim = useRef(new Animated.Value(progress)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: Math.max(0, Math.min(1, progress)),
+      duration: 450,
+      useNativeDriver: false,
+    }).start();
+  }, [progress]);
+
+  const dashoffset = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [CIRC, 0],
+  }) as unknown as number;
+
+  const currentText = `${Math.round(current)}°`;
+  const targetText = `Target ${Math.round(target)}°`;
+
+  // Pull the two gradient stops from theme
+  const [g0, g1] = gradientProps.colors;
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <Defs>
+          <SvgGrad id="ringGrad" x1="0" y1="0.5" x2="1" y2="0.5">
+            <Stop offset="0%" stopColor={g0} />
+            <Stop offset="100%" stopColor={g1} />
+          </SvgGrad>
+        </Defs>
+
+        {/* background track */}
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={R}
+          stroke={colors.divider}
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          fill="none"
+        />
+
+        {/* progress arc with SVG gradient */}
+        <AnimatedCircle
+          cx={size / 2}
+          cy={size / 2}
+          r={R}
+          stroke="url(#ringGrad)"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          fill="none"
+          strokeDasharray={`${CIRC}, ${CIRC}`}
+          strokeDashoffset={dashoffset}
+          rotation="-90"
+          originX={size / 2}
+          originY={size / 2}
+        />
+      </Svg>
+
+      {/* temperature number */}
+      <Text style={{ fontSize: 72 * fontScale, lineHeight: 80 * fontScale, fontWeight: '800', color: colors.textPrimary }}>
+        {currentText}
+      </Text>
+
+      {/* target chip */}
+      <View
+        style={{
+          marginTop: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: g0, // use gradient start as the accent border
+        }}
+      >
+        <Text style={{ fontWeight: '700', color: g0 }}>{targetText}</Text>
+      </View>
+    </View>
+  );
+}
+
+// Wrap Animated for Circle prop animation
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+#### ./src/navigation/TabNavigator.tsx
+// src/navigation/TabNavigator.tsx
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import ScheduleScreen from '../screens/ScheduleScreen';
+import HeatScreen from '../screens/HeatScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import { colors } from '../styles/theme';
+import { Calendar, Flame, Settings } from 'lucide-react-native';
+import { Platform, View } from 'react-native';
+
+export type RootTabParamList = {
+  Schedule: undefined;
+  Heat: undefined;
+  Settings: undefined;
+};
+
+const Tab = createBottomTabNavigator<RootTabParamList>();
+
+export default function TabNavigator() {
+  return (
+    <Tab.Navigator
+      initialRouteName="Heat"
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: '#FFFFFF14',
+          height: Platform.select({ ios: 86, android: 70 }),
+          paddingTop: 8,
+          paddingBottom: Platform.select({ ios: 24, android: 16 }),
+        },
+        tabBarLabelStyle: { fontSize: 12 },
+      }}
+    >
+      <Tab.Screen
+        name="Schedule"
+        component={ScheduleScreen}
+        options={{
+          tabBarLabel: 'Schedule',
+          tabBarIcon: ({ color, size }) => <Calendar color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="Heat"
+        component={HeatScreen}
+        options={{
+          tabBarLabel: 'Heat',
+          tabBarIcon: ({ color }) => (
+            <View
+              style={{
+                backgroundColor: '#1A2129',
+                borderRadius: 32,
+                padding: 10,
+                borderWidth: 1,
+                borderColor: '#FFFFFF14',
+              }}
+            >
+              <Flame color={color} size={28} />
+            </View>
+          ),
+          tabBarItemStyle: { marginTop: -12 }, // pop the center icon up a bit
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          tabBarLabel: 'Settings',
+          tabBarIcon: ({ color, size }) => <Settings color={color} size={size} />,
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+#### ./src/navigation/CenterTabButton.tsx
+// 2-space indentation
+
+import React from 'react';
+import { Pressable, View } from 'react-native';
+import { Flame } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { gradientProps } from '../styles/theme';
+
+type Props = {
+  focused: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  color: string; // unused for gradient, kept for signature compatibility
+};
+
+export default function CenterTabButton({ focused, onPress, onLongPress }: Props) {
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={{ alignItems: 'center', justifyContent: 'center', top: -18 }}
+      hitSlop={12}
+    >
+      <View style={{ width: 64, height: 64, borderRadius: 32, overflow: 'hidden' }}>
+        <LinearGradient
+          {...gradientProps}
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Flame size={32} color="#ffffff" opacity={focused ? 1 : 0.85} />
+        </LinearGradient>
+      </View>
+    </Pressable>
+  );
+}
+
+#### ./src/screens/HeatScreen.tsx
+// src/screens/HeatScreen.tsx
+import React, { useCallback, useState } from 'react';
+import { View, Text, Pressable } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSaunaController } from '../hooks/useSaunaController';
+import TemperatureCircle from '../components/TemperatureCircle';
+import ControlButton from '../components/ControlButton';
+import FeatureControl from '../components/FeatureControl';
+import ZoneRow from '../components/ZoneRow';
+import { Sun, Activity, TimerReset, Menu, Minus, Plus } from 'lucide-react-native';
+import { colors } from '../styles/theme';
+import { TEMP } from '../utils/constants';
+import TimerSheet from '../components/TimerSheet';
+
+export default function HeatScreen() {
+  const c = useSaunaController();
+  const [zonesMode, setZonesMode] = useState(false); // single-dial by default
+  const [timerOpen, setTimerOpen] = useState(false);
+
+  const onPressPrimary = useCallback(() => {
+    if (c.isOn) c.stopSauna();
+    else c.startSauna();
+  }, [c]);
+
+  const inc = (v: number) => Math.min(TEMP.maxF, Math.round(v + 1));
+  const dec = (v: number) => Math.max(TEMP.minF, Math.round(v - 1));
+
+  const CARD_MIN_HEIGHT = 500;
+  const CARD_TOP_PAD = 56;
+
+  const RING_SIZE = 300;
+  const SINGLE_RING_TOP = 2;
+  const SINGLE_PM_MARGIN_TOP = 0;
+  const SINGLE_BUTTON_MARGIN_TOP = 10;
+
+  return (
+    <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-bg">
+      {/* Header */}
+      <View className="px-5 pt-2 pb-3">
+        <Text className="text-textPrimary text-xl font-semibold">Sauna Dome · Ultimate</Text>
+        <Text className="text-textSecondary mt-1">
+          {c.isOn ? (c.isPreheating ? 'Heating Up' : 'Session Active') : 'Off'}
+        </Text>
+      </View>
+
+      {/* CARD */}
+      <View
+        className="mx-4 rounded-card p-4"
+        style={{
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.divider,
+          position: 'relative',
+          paddingTop: CARD_TOP_PAD,
+          minHeight: CARD_MIN_HEIGHT,
+        }}
+      >
+        {/* Kebab inside the card */}
+        <Pressable
+          onPress={() => setZonesMode((s) => !s)}
+          style={{ position: 'absolute', right: 12, top: 12, padding: 12 }}
+          accessibilityLabel="Toggle zone view"
+        >
+          <Menu size={24} color={colors.textSecondary} />
+        </Pressable>
+
+        {/* Content + bottom action */}
+        <View style={{ flexGrow: 1, justifyContent: 'space-between' }}>
+          {/* CONTENT */}
+          <View>
+            {zonesMode ? (
+              <>
+                <View style={{ marginTop: 20 }}>
+                  <ZoneRow
+                    title="Upper"
+                    current={c.zoneCurrents.Upper}
+                    target={c.zoneTargets.Upper}
+                    onInc={() => c.setUpperTargetTemp(inc(c.zoneTargets.Upper))}
+                    onDec={() => c.setUpperTargetTemp(dec(c.zoneTargets.Upper))}
+                  />
+                </View>
+                <ZoneRow
+                  title="Middle"
+                  current={c.zoneCurrents.Middle}
+                  target={c.zoneTargets.Middle}
+                  onInc={() => c.setMiddleTargetTemp(inc(c.zoneTargets.Middle))}
+                  onDec={() => c.setMiddleTargetTemp(dec(c.zoneTargets.Middle))}
+                />
+                <ZoneRow
+                  title="Lower"
+                  current={c.zoneCurrents.Lower}
+                  target={c.zoneTargets.Lower}
+                  onInc={() => c.setLowerTargetTemp(inc(c.zoneTargets.Lower))}
+                  onDec={() => c.setLowerTargetTemp(dec(c.zoneTargets.Lower))}
+                />
+              </>
+            ) : (
+              <>
+                {/* Larger ring */}
+                <View style={{ alignItems: 'center', marginTop: SINGLE_RING_TOP }}>
+                  <TemperatureCircle
+                    current={c.currentTempF}
+                    target={c.targetTempF}
+                    progress={c.progress}
+                    size={RING_SIZE}
+                    fontScale={1.06}
+                  />
+                </View>
+
+                {/* ± controls */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 36,
+                    marginTop: SINGLE_PM_MARGIN_TOP,
+                  }}
+                >
+                  <Pressable
+                    onPress={() => c.setTargetTemperature(Math.max(77, c.targetTempF - 1))}
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 24,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.surface,
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                    }}
+                    accessibilityLabel="Decrease target"
+                  >
+                    <Minus size={22} color={colors.textPrimary} />
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => c.setTargetTemperature(Math.min(194, c.targetTempF + 1))}
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 24,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.surface,
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                    }}
+                    accessibilityLabel="Increase target"
+                  >
+                    <Plus size={22} color={colors.textPrimary} />
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* BOTTOM ACTION */}
+          <View style={{ marginTop: SINGLE_BUTTON_MARGIN_TOP }}>
+            <View className="self-center w-11/12">
+              <ControlButton
+                isOn={c.isOn}
+                isPreheating={c.isPreheating}
+                progress={c.progress}
+                onPress={onPressPrimary}
+              />
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Feature row */}
+      <View className="flex-row px-3 mt-3">
+        <FeatureControl
+          title="Red Light"
+          value={c.redLightOn ? 'ON' : 'OFF'}
+          icon={<Sun size={20} color={colors.textSecondary} />}
+          onPress={() => c.setRedLight(!c.redLightOn)}
+        />
+        <FeatureControl
+          title="PEMF"
+          value={`${c.pemfLevel}`}
+          icon={<Activity size={20} color={colors.textSecondary} />}
+          onPress={() => c.setPEMFLevel(Math.min(30, c.pemfLevel + 1))}
+        />
+        <FeatureControl
+          title="Timer"
+          value={c.timerMinutes ? `${c.timerMinutes} min` : 'Off'}
+          icon={<TimerReset size={20} color={colors.textSecondary} />}
+          onPress={() => setTimerOpen(true)}
+        />
+        <TimerSheet
+          visible={timerOpen}
+          minutes={c.timerMinutes ?? 45}
+          onClose={() => setTimerOpen(false)}
+          onChange={(m) => c.setSessionTimer(m)}
+        />
+      </View>
+    </SafeAreaView>
+  );
+}
+
+#### ./src/screens/SettingsScreen.tsx
+// src/screens/SettingsScreen.tsx
+import { View, Text } from 'react-native';
+
+export default function SettingsScreen() {
+  return (
+    <View className="flex-1 bg-bg items-center justify-center">
+      <Text className="text-textPrimary text-xl">Settings</Text>
+      <Text className="text-textSecondary mt-2">Device: Mock • °F only</Text>
+    </View>
+  );
+}
+
+#### ./src/screens/ScheduleScreen.tsx
+// src/screens/ScheduleScreen.tsx
+import { View, Text } from 'react-native';
+
+export default function ScheduleScreen() {
+  return (
+    <View className="flex-1 bg-bg items-center justify-center">
+      <Text className="text-textPrimary text-xl">Schedule</Text>
+      <Text className="text-textSecondary mt-2">Local schedules (MVP)</Text>
+    </View>
+  );
+}
+
+#### ./src/styles/theme.ts
+// src/styles/theme.ts
+// 2-space indentation
+export const colors = {
+  // Light theme
+  bg: '#FFFFFF',             // page background
+  surface: '#FFFFFF',        // cards / sheets
+  surfaceMuted: '#F6F8FB',   // subtle containers, tab bar, etc.
+  textPrimary: '#0B1220',    // near-black
+  textSecondary: '#5B6471',  // gray-600
+  divider: '#E6E9EF',        // light border
+  error: '#E11D48',
+  ready: '#806B2F',
+  pemf: '#1F7A6B',
+  redlight: '#D12E2E',
+
+  // keep a solid accent fallback (first stop of gradient)
+  accent: '#20C4DF',
+};
+
+export const gradientProps = {
+  colors: ['#20C4DF', '#8F48C9'], // your button/ring gradient
+  start: { x: 0, y: 0.5 },
+  end: { x: 1, y: 0.5 },
+};
+
+export const radii = {
+  card: 24,
+  chip: 16,
+  button: 24,
+};
+
+export const spacing = {
+  outer: 16,
+  inner: 8,
+};
+
+export const typography = {
+  h1: { fontSize: 64, lineHeight: 72, fontWeight: '700' as const, color: colors.textPrimary },
+  h2: { fontSize: 24, lineHeight: 28, fontWeight: '600' as const, color: colors.textPrimary },
+  body: { fontSize: 16, lineHeight: 22, fontWeight: '500' as const, color: colors.textPrimary },
+  caption: { fontSize: 13, lineHeight: 18, fontWeight: '500' as const, color: colors.textSecondary },
+};
