@@ -81,6 +81,10 @@ class MockSaunaControllerImpl implements SaunaController {
   private profiles: ZoneProfile[] = [];
   private schedules: SaunaSchedule[] = [];
 
+  // Notification tracking (persists across screen changes)
+  private readyNotificationFired = false;
+  private lastNotificationTargetTemp: number | null = null;
+
   private loop: ReturnType<typeof setInterval> | null = null;
 
   /* -------------------------------- Events -------------------------------- */
@@ -162,9 +166,14 @@ class MockSaunaControllerImpl implements SaunaController {
     // Determine aggregate current
     const current = this.getAggregateCurrentUnsafe();
 
+    // Determine highest current zone temperature
+    const highestCurrent = Math.max(this.zoneCurrents.Upper, this.zoneCurrents.Middle, this.zoneCurrents.Lower);
+    const highestTarget = Math.max(this.zoneTargets.Upper, this.zoneTargets.Middle, this.zoneTargets.Lower);
+
     // State transitions
     if (this.state === 'HEATING') {
-      if (current >= this.targetTempF - this.epsilon) {
+      // Transition to ACTIVE when the highest zone reaches its target (not average)
+      if (highestCurrent >= highestTarget - this.epsilon) {
         this.setState('ACTIVE');
       }
     }
@@ -267,6 +276,10 @@ class MockSaunaControllerImpl implements SaunaController {
 
   async startSauna(): Promise<void> {
     this.lastError = undefined;
+    // Reset notification tracking for new session
+    this.readyNotificationFired = false;
+    this.lastNotificationTargetTemp = null;
+
     // Initialize timer on start if configured but not running
     if (this.timerMinutes && this.remainingSeconds <= 0) {
       this.remainingSeconds = this.timerMinutes * 60;
@@ -275,15 +288,19 @@ class MockSaunaControllerImpl implements SaunaController {
 
     // Update targetTempF to match the average of current zone targets
     this.targetTempF = Math.round(avg(Object.values(this.zoneTargets)));
-    
+
     this.setState('HEATING');
     this.persistSnapshot();
   }
 
   async stopSauna(): Promise<void> {
+    // Reset notification tracking when sauna stops
+    this.readyNotificationFired = false;
+    this.lastNotificationTargetTemp = null;
+
     // Turn features off per spec
     this.redLightOn = false;
-    // Don’t zero out PEMF; keep last value for next session
+    // Don't zero out PEMF; keep last value for next session
     // Timer stops but retains configured minutes
     this.remainingSeconds = 0;
     this.emitTimer();
@@ -422,7 +439,7 @@ class MockSaunaControllerImpl implements SaunaController {
       id: crypto.randomUUID(),
       name: data.name,
       enabled: data.enabled,
-      day: data.day,
+      days: data.days,
       timeLocalHHmm: data.timeLocalHHmm,
       // Clamp temperatures
       upper: clampTempF(data.upper, TEMP.minF, TEMP.maxF),
@@ -553,6 +570,24 @@ class MockSaunaControllerImpl implements SaunaController {
       remainingSeconds: Math.max(0, Math.floor(this.remainingSeconds)),
       lastError: this.lastError,
     };
+  }
+
+  /* ---------------------- Notification Tracking Methods --------------------- */
+
+  shouldFireReadyNotification(targetTemp: number): boolean {
+    if (this.readyNotificationFired) return false;
+    if (this.lastNotificationTargetTemp === targetTemp) return false;
+    return true;
+  }
+
+  markReadyNotificationFired(targetTemp: number): void {
+    this.readyNotificationFired = true;
+    this.lastNotificationTargetTemp = targetTemp;
+  }
+
+  resetReadyNotification(): void {
+    this.readyNotificationFired = false;
+    this.lastNotificationTargetTemp = null;
   }
 }
 

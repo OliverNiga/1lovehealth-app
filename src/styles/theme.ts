@@ -18,7 +18,7 @@ export const colors = {
 };
 
 export const gradientProps = {
-  colors: ['#20C4DF', '#8F48C9'], // your button/ring gradient
+  colors: ['#20C4DF', '#8F48C9'] as const, // your button/ring gradient
   start: { x: 0, y: 0.5 },
   end: { x: 1, y: 0.5 },
 };

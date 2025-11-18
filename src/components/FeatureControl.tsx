@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, useWindowDimensions } from 'react-native';
 import { colors } from '../styles/theme';
 
 type Props = {
@@ -12,6 +12,8 @@ type Props = {
 };
 
 export default function FeatureControl({ title, value, icon, onPress, variant = 'default', isActive = false }: Props) {
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width > 600;
   // Determine colors based on variant and active state
   let iconColor = colors.textSecondary;
   let textColor = colors.textSecondary;
@@ -33,20 +35,22 @@ export default function FeatureControl({ title, value, icon, onPress, variant = 
   }
 
   return (
-    <Pressable onPress={onPress} className="flex-1">
+    <Pressable onPress={onPress} className="flex-1" style={isLargeScreen ? { height: '100%' } : {}}>
       <View
-        className="rounded-card p-4 mx-1 text-center items-center"
-        style={{ 
+        className="rounded-card mx-1 text-center items-center justify-center"
+        style={{
           backgroundColor: colors.surface,
           borderWidth: 1,
-          borderColor: colors.divider
+          borderColor: colors.divider,
+          padding: isLargeScreen ? 24 : 16,
+          ...(isLargeScreen && { height: '100%' })
         }}
       >
-        <View className="items-start mb-2">
+        <View className="items-start" style={{ marginBottom: isLargeScreen ? 12 : 8 }}>
           {React.cloneElement(icon as React.ReactElement, { color: iconColor })}
         </View>
-        <Text style={{ color: textColor, fontSize: 16, fontWeight: '600' }}>{title}</Text>
-        <Text style={{ color: valueColor, marginTop: 4 }}>{value}</Text>
+        <Text style={{ color: textColor, fontSize: isLargeScreen ? 20 : 16, fontWeight: '600' }}>{title}</Text>
+        <Text style={{ color: valueColor, marginTop: isLargeScreen ? 8 : 4, fontSize: isLargeScreen ? 16 : 14 }}>{value}</Text>
       </View>
     </Pressable>
   );

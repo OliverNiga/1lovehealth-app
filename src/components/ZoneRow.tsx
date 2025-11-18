@@ -1,6 +1,6 @@
 // src/components/ZoneRow.tsx
-import React, { useMemo } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { View, Text, Pressable, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, gradientProps } from '../styles/theme';
 import { TEMP } from '../utils/constants';
@@ -15,50 +15,126 @@ type Props = {
 };
 
 export default function ZoneRow({ title, current, target, onInc, onDec }: Props) {
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width > 600;
   const progress = useMemo(() => {
     const denom = Math.max(1, target - TEMP.ambientDefaultF);
     const num = Math.max(0, current - TEMP.ambientDefaultF);
     return Math.max(0, Math.min(1, num / denom));
   }, [current, target]);
 
+  // Auto-increment/decrement on hold
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const didAutoRepeatRef = useRef(false);
+  const onIncRef = useRef(onInc);
+  const onDecRef = useRef(onDec);
+
+  // Keep refs up to date
+  onIncRef.current = onInc;
+  onDecRef.current = onDec;
+
+  const startAutoChange = (callback: 'inc' | 'dec') => {
+    didAutoRepeatRef.current = false;
+    // Initial delay before starting auto-repeat
+    timeoutRef.current = setTimeout(() => {
+      didAutoRepeatRef.current = true;
+      // Start repeating every 100ms
+      intervalRef.current = setInterval(() => {
+        if (callback === 'inc') {
+          onIncRef.current();
+        } else {
+          onDecRef.current();
+        }
+      }, 100);
+    }, 300);
+  };
+
+  const stopAutoChange = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  const handleIncPress = () => {
+    if (!didAutoRepeatRef.current) {
+      onInc();
+    }
+  };
+
+  const handleDecPress = () => {
+    if (!didAutoRepeatRef.current) {
+      onDec();
+    }
+  };
+
+  const buttonSize = isLargeScreen ? 48 : 40;
+  const iconSize = isLargeScreen ? 22 : 18;
+  const titleFontSize = isLargeScreen ? 36 : 28;
+  const targetFontSize = isLargeScreen ? 16 : 14;
+  const verticalPadding = isLargeScreen ? 20 : 12;
+
   return (
     <View
-      className="rounded-2xl px-4 py-3 mb-3"
-      style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider }}
+      className="rounded-2xl px-4 mb-3"
+      style={{
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.divider,
+        paddingVertical: verticalPadding
+      }}
     >
       <View className="flex-row items-center justify-between">
         <Pressable
-          onPress={onDec}
+          onPress={handleDecPress}
+          onPressIn={() => startAutoChange('dec')}
+          onPressOut={stopAutoChange}
           android_ripple={{ color: colors.divider }}
         >
           {({ pressed }) => (
             <View
-              className="w-10 h-10 rounded-full items-center justify-center"
-              style={{ 
-                backgroundColor: colors.bg, 
-                borderWidth: 1, 
+              className="rounded-full items-center justify-center"
+              style={{
+                width: buttonSize,
+                height: buttonSize,
+                backgroundColor: colors.bg,
+                borderWidth: 1,
                 borderColor: colors.divider,
                 transform: [{ scale: pressed ? 0.9 : 1 }],
               }}
             >
-              <Minus size={18} color={colors.textPrimary} />
+              <Minus size={iconSize} color={colors.textPrimary} />
             </View>
           )}
         </Pressable>
 
         <View className="items-center flex-1">
-          <Text style={{ color: colors.textPrimary, fontSize: 28, fontWeight: '700' }}>
+          <Text style={{ color: colors.textPrimary, fontSize: titleFontSize, fontWeight: '700' }}>
             {title} {Math.round(current)}°
           </Text>
 
           {/* mini progress bar with gradient */}
           <View
-            className="w-[72%] h-2 mt-2 rounded-full"
-            style={{ backgroundColor: colors.divider, overflow: 'hidden' }}
+            className="w-[72%] rounded-full"
+            style={{
+              height: isLargeScreen ? 6 : 8,
+              marginTop: isLargeScreen ? 12 : 8,
+              backgroundColor: colors.divider,
+              overflow: 'hidden'
+            }}
           >
             <View
-              className="h-2 rounded-full"
-              style={{ width: `${Math.round(progress * 100)}%`, overflow: 'hidden' }}
+              className="rounded-full"
+              style={{
+                height: '100%',
+                width: `${Math.round(progress * 100)}%`,
+                overflow: 'hidden'
+              }}
             >
               <LinearGradient
                 {...gradientProps}
@@ -67,24 +143,34 @@ export default function ZoneRow({ title, current, target, onInc, onDec }: Props)
             </View>
           </View>
 
-          <Text style={{ color: colors.accent, marginTop: 8 }}>Target {Math.round(target)}°</Text>
+          <Text style={{
+            color: colors.accent,
+            marginTop: isLargeScreen ? 12 : 8,
+            fontSize: targetFontSize
+          }}>
+            Target {Math.round(target)}°
+          </Text>
         </View>
 
         <Pressable
-          onPress={onInc}
+          onPress={handleIncPress}
+          onPressIn={() => startAutoChange('inc')}
+          onPressOut={stopAutoChange}
           android_ripple={{ color: colors.divider }}
         >
           {({ pressed }) => (
             <View
-              className="w-10 h-10 rounded-full items-center justify-center"
-              style={{ 
-                backgroundColor: colors.bg, 
-                borderWidth: 1, 
+              className="rounded-full items-center justify-center"
+              style={{
+                width: buttonSize,
+                height: buttonSize,
+                backgroundColor: colors.bg,
+                borderWidth: 1,
                 borderColor: colors.divider,
                 transform: [{ scale: pressed ? 0.9 : 1 }],
               }}
             >
-              <Plus size={18} color={colors.textPrimary} />
+              <Plus size={iconSize} color={colors.textPrimary} />
             </View>
           )}
         </Pressable>

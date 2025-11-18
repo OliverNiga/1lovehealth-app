@@ -7,6 +7,7 @@ import {
   ScrollView,
   Pressable,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,7 +21,6 @@ import { TEMP, TIMER, PEMF } from '../utils/constants';
 import type { RootStackParamList } from '../navigation/RootStack';
 import type { Schedule, ZoneProfile } from '../utils/storage';
 import type { DayOfWeek } from '../controllers/SaunaControllerInterface';
-import { generateScheduleName } from '../utils/scheduleHelpers';
 
 import DaySelector from '../components/DaySelector';
 import TimePickerButton from '../components/TimePickerButton';
@@ -29,6 +29,7 @@ import FeatureControl from '../components/FeatureControl';
 import TimerSheet from '../components/TimerSheet';
 import PEMFSheet from '../components/PEMFSheet';
 import { Sun, Activity, TimerReset } from 'lucide-react-native';
+import { TextInput } from 'react-native';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ScheduleEditScreen'>;
 type RouteProps = RouteProp<RootStackParamList, 'ScheduleEditScreen'>;
@@ -37,6 +38,7 @@ export default function ScheduleEditScreen() {
   const nav = useNavigation<NavigationProp>();
   const route = useRoute<RouteProps>();
   const scheduleId = route.params?.scheduleId;
+  const { width } = useWindowDimensions();
 
   const {
     getSchedules,
@@ -45,8 +47,12 @@ export default function ScheduleEditScreen() {
     getZoneProfiles,
   } = useSaunaController();
 
+  const isLargeScreen = width > 600;
+  const maxContentWidth = 600;
+
   // Form state
-  const [day, setDay] = useState<DayOfWeek | null>(null);
+  const [name, setName] = useState('');
+  const [days, setDays] = useState<DayOfWeek[]>([]);
   const [time, setTime] = useState('06:00');
   const [upper, setUpper] = useState(TEMP.defaultTargetF);
   const [middle, setMiddle] = useState(TEMP.defaultTargetF);
@@ -75,7 +81,8 @@ export default function ScheduleEditScreen() {
         const schedules = await getSchedules();
         const schedule = schedules.find((s) => s.id === scheduleId);
         if (schedule) {
-          setDay(schedule.day);
+          setName(schedule.name);
+          setDays(schedule.days);
           setTime(schedule.timeLocalHHmm);
           setUpper(schedule.upper);
           setMiddle(schedule.middle);
@@ -98,8 +105,14 @@ export default function ScheduleEditScreen() {
     });
   }, [nav, scheduleId]);
 
-  const handleSelectDay = useCallback((selectedDay: DayOfWeek) => {
-    setDay(selectedDay);
+  const handleToggleDay = useCallback((day: DayOfWeek) => {
+    setDays((prev) => {
+      if (prev.includes(day)) {
+        return prev.filter((d) => d !== day);
+      } else {
+        return [...prev, day];
+      }
+    });
   }, []);
 
   const handleProfileSelect = useCallback(
@@ -126,19 +139,21 @@ export default function ScheduleEditScreen() {
 
   const handleSave = useCallback(async () => {
     // Validation
-    if (!day) {
-      Alert.alert('Required', 'Please select a day');
+    if (days.length === 0) {
+      Alert.alert('Required', 'Please select at least one day');
       return;
     }
 
-    // Auto-generate the schedule name
-    const generatedName = generateScheduleName(day, time, timerMinutes);
+    if (!name.trim()) {
+      Alert.alert('Required', 'Please enter a schedule name');
+      return;
+    }
 
     const scheduleData: Schedule = {
       id: scheduleId || nanoid(),
-      name: generatedName,
+      name: name.trim(),
       enabled: true,
-      day,
+      days,
       timeLocalHHmm: time,
       upper,
       middle,
@@ -179,7 +194,8 @@ export default function ScheduleEditScreen() {
     }
   }, [
     scheduleId,
-    day,
+    name,
+    days,
     time,
     upper,
     middle,
@@ -199,18 +215,42 @@ export default function ScheduleEditScreen() {
   }, [nav]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center' }}>
       <ScrollView
+        style={{ flex: 1, width: '100%', maxWidth: maxContentWidth }}
         contentContainerStyle={{
           padding: spacing.outer,
         }}
       >
-        {/* Day of Week */}
+        {/* Schedule Name */}
         <View style={{ marginBottom: 20 }}>
           <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 }}>
-            Day
+            Schedule Name
           </Text>
-          <DaySelector mode="single" selectedDay={day} onSelectDay={handleSelectDay} />
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g., Morning Sauna"
+            placeholderTextColor={colors.textSecondary}
+            style={{
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              borderRadius: radii.button,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              fontSize: 16,
+              color: colors.textPrimary,
+            }}
+          />
+        </View>
+
+        {/* Days of Week */}
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 }}>
+            Days
+          </Text>
+          <DaySelector selectedDays={days} onToggleDay={handleToggleDay} />
         </View>
 
         {/* Start Time */}
@@ -312,11 +352,11 @@ export default function ScheduleEditScreen() {
             Features
           </Text>
 
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', ...(isLargeScreen && { height: 140 }) }}>
             <FeatureControl
               title="Red Light"
               value={redLightOn ? 'ON' : 'OFF'}
-              icon={<Sun size={20} />}
+              icon={<Sun size={isLargeScreen ? 28 : 20} />}
               onPress={() => setRedLightOn(!redLightOn)}
               variant="redlight"
               isActive={redLightOn}
@@ -324,14 +364,14 @@ export default function ScheduleEditScreen() {
             <FeatureControl
               title="PEMF"
               value={pemfLevel === 0 ? 'Off' : `${pemfLevel} hz`}
-              icon={<Activity size={20} />}
+              icon={<Activity size={isLargeScreen ? 28 : 20} />}
               onPress={() => setPemfOpen(true)}
               variant="pemf"
             />
             <FeatureControl
               title="Timer"
               value={`${timerMinutes} min`}
-              icon={<TimerReset size={20} />}
+              icon={<TimerReset size={isLargeScreen ? 28 : 20} />}
               onPress={() => setTimerOpen(true)}
             />
           </View>

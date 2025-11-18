@@ -27,18 +27,19 @@ export default function DaySelector(props: Props) {
   return (
     <View style={styles.container}>
       {DAYS.map((day) => {
-        const isSelected =
-          mode === 'single'
-            ? props.selectedDay === day
-            : props.selectedDays.includes(day);
+        let isSelected: boolean;
+        let handlePress: () => void;
 
-        const handlePress = () => {
-          if (mode === 'single') {
-            props.onSelectDay(day);
-          } else {
-            props.onToggleDay(day);
-          }
-        };
+        if (mode === 'single' && 'selectedDay' in props && 'onSelectDay' in props) {
+          isSelected = props.selectedDay === day;
+          handlePress = () => props.onSelectDay(day);
+        } else if ('selectedDays' in props && 'onToggleDay' in props) {
+          isSelected = props.selectedDays.includes(day);
+          handlePress = () => props.onToggleDay(day);
+        } else {
+          isSelected = false;
+          handlePress = () => {};
+        }
 
         return (
           <Pressable

@@ -37,7 +37,7 @@ export interface SaunaSchedule {
   id: string;
   name: string;
   enabled: boolean;
-  day: DayOfWeek;                // which day this schedule runs
+  days: DayOfWeek[];             // which days this schedule runs (can be multiple)
   timeLocalHHmm: string;         // "06:30" (24h)
 
   // Zone temperatures (°F)

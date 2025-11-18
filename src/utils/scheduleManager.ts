@@ -17,38 +17,49 @@ const DAY_MAP: Record<DayOfWeek, number> = {
 
 /**
  * Calculate the next occurrence of a schedule from now
+ * Returns the earliest occurrence from all selected days
  */
 export function getNextOccurrence(schedule: Schedule): Date | null {
-  if (!schedule.enabled || !schedule.day) {
+  if (!schedule.enabled || !schedule.days || schedule.days.length === 0) {
     return null;
   }
 
   const now = new Date();
   const [hours, minutes] = schedule.timeLocalHHmm.split(':').map(Number);
 
-  // Convert schedule day to day number
-  const scheduleDayNumber = DAY_MAP[schedule.day];
+  let earliestDate: Date | null = null;
 
-  // Try today first
-  const today = new Date();
-  today.setHours(hours, minutes, 0, 0);
+  // Check each day in the schedule
+  for (const day of schedule.days) {
+    const scheduleDayNumber = DAY_MAP[day];
 
-  if (today > now && scheduleDayNumber === now.getDay()) {
-    return today;
-  }
+    // Try today first
+    const today = new Date();
+    today.setHours(hours, minutes, 0, 0);
 
-  // Find next occurrence of this day
-  for (let i = 1; i <= 7; i++) {
-    const nextDate = new Date(now);
-    nextDate.setDate(now.getDate() + i);
-    nextDate.setHours(hours, minutes, 0, 0);
+    if (today > now && scheduleDayNumber === now.getDay()) {
+      if (!earliestDate || today < earliestDate) {
+        earliestDate = today;
+      }
+      continue;
+    }
 
-    if (scheduleDayNumber === nextDate.getDay()) {
-      return nextDate;
+    // Find next occurrence of this day
+    for (let i = 1; i <= 7; i++) {
+      const nextDate = new Date(now);
+      nextDate.setDate(now.getDate() + i);
+      nextDate.setHours(hours, minutes, 0, 0);
+
+      if (scheduleDayNumber === nextDate.getDay()) {
+        if (!earliestDate || nextDate < earliestDate) {
+          earliestDate = nextDate;
+        }
+        break;
+      }
     }
   }
 
-  return null;
+  return earliestDate;
 }
 
 /**
@@ -102,6 +113,7 @@ export async function scheduleNotifications(schedule: Schedule): Promise<void> {
         sound: true,
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: secondsUntilStart - 300,
       },
     });
@@ -120,6 +132,7 @@ export async function scheduleNotifications(schedule: Schedule): Promise<void> {
       },
     },
     trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: secondsUntilStart,
     },
   });
@@ -207,13 +220,14 @@ export async function checkSchedulesToExecute(
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
   for (const schedule of schedules) {
-    if (!schedule.enabled || !schedule.day) {
+    if (!schedule.enabled || !schedule.days || schedule.days.length === 0) {
       continue;
     }
 
-    // Check if schedule should run now
-    const scheduleDayNumber = DAY_MAP[schedule.day];
-    if (scheduleDayNumber !== currentDay) {
+    // Check if any of the schedule's days match today
+    const shouldRunToday = schedule.days.some(day => DAY_MAP[day] === currentDay);
+
+    if (!shouldRunToday) {
       continue;
     }
 

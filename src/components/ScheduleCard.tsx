@@ -2,10 +2,10 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { MoreVertical, Calendar, Clock, Timer } from 'lucide-react-native';
+import { MoreVertical, Clock } from 'lucide-react-native';
 import { colors, radii } from '../styles/theme';
 import type { Schedule } from '../utils/storage';
-import type { DayOfWeek } from '../controllers/SaunaControllerInterface';
+import { formatDaysAbbreviated, formatTime12h } from '../utils/scheduleHelpers';
 
 type Props = {
   schedule: Schedule;
@@ -14,28 +14,10 @@ type Props = {
   onPress: (schedule: Schedule) => void;
 };
 
-// Helper to extract day name from schedule name
-function getDayName(scheduleName: string): string {
-  return scheduleName.split(' - ')[0];
-}
-
-// Helper to extract time from schedule name
-function getTime(scheduleName: string): string {
-  const parts = scheduleName.split(' - ');
-  return parts[1] || '';
-}
-
-// Helper to extract duration from schedule name
-function getDuration(scheduleName: string): string {
-  const parts = scheduleName.split(' - ');
-  return parts[2] || '';
-}
-
 export default function ScheduleCard({ schedule, onToggleEnabled, onPressMenu, onPress }: Props) {
-  const dayName = getDayName(schedule.name);
-  const time = getTime(schedule.name);
-  const duration = getDuration(schedule.name);
   const isDisabled = !schedule.enabled;
+  const daysText = formatDaysAbbreviated(schedule.days);
+  const timeText = formatTime12h(schedule.timeLocalHHmm);
 
   return (
     <Pressable
@@ -43,14 +25,20 @@ export default function ScheduleCard({ schedule, onToggleEnabled, onPressMenu, o
       style={[styles.card, isDisabled && styles.cardDisabled]}
       accessibilityLabel={`Schedule ${schedule.name}`}
     >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1 }}>
+          {/* Row 1: Schedule Name */}
           <Text style={[styles.name, isDisabled && styles.textDisabled]}>
             {schedule.name}
           </Text>
 
-          {/* Single horizontal row with temperatures and timer */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {/* Row 2: Days */}
+          <Text style={[styles.days, isDisabled && styles.textDisabled]}>
+            {daysText}
+          </Text>
+
+          {/* Row 3: Temperatures and Start Time */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
             {/* Temperature card */}
             <View style={{
               backgroundColor: 'rgba(59, 130, 246, 0.12)',
@@ -76,7 +64,7 @@ export default function ScheduleCard({ schedule, onToggleEnabled, onPressMenu, o
               </View>
             </View>
 
-            {/* Timer badge */}
+            {/* Start Time badge */}
             <View style={{
               backgroundColor: 'rgba(34, 197, 94, 0.15)',
               paddingHorizontal: 12,
@@ -88,9 +76,9 @@ export default function ScheduleCard({ schedule, onToggleEnabled, onPressMenu, o
               gap: 5,
               minHeight: 46,
             }}>
-              <Timer size={16} color="#15803D" />
+              <Clock size={16} color="#15803D" />
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#15803D' }}>
-                {duration.replace(' min', 'm')}
+                {timeText}
               </Text>
             </View>
           </View>
@@ -130,7 +118,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginBottom: 10,
+    marginBottom: 4,
+  },
+  days: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
   },
   textDisabled: {
     color: colors.textSecondary,

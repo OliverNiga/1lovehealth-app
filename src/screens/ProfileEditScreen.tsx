@@ -1,7 +1,7 @@
 // 2-space indentation
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Sun, Activity, TimerReset } from 'lucide-react-native';
@@ -16,31 +16,47 @@ import FeatureControl from '../components/FeatureControl';
 import TimerSheet from '../components/TimerSheet';
 import PEMFSheet from '../components/PEMFSheet';
 
-type RouteParams = { profileId: string };
+type RouteParams = { profileId?: string };
 
 export default function ProfileEditScreen() {
   const nav = useNavigation();
   const route = useRoute();
   const params = (route.params || {}) as RouteParams;
+  const { width } = useWindowDimensions();
 
-  const { getZoneProfiles, updateZoneProfile } = useSaunaController();
+  const { getZoneProfiles, updateZoneProfile, createZoneProfile } = useSaunaController();
+
+  const isLargeScreen = width > 600;
+  const maxContentWidth = 600;
 
   const [initial, setInitial] = useState<ZoneProfile | null>(null);
+  const [isCreateMode, setIsCreateMode] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [name, setName] = useState('');
-  const [upper, setUpper] = useState(0);
-  const [middle, setMiddle] = useState(0);
-  const [lower, setLower] = useState(0);
-  const [pemfLevel, setPemfLevel] = useState(0);
+  const [upper, setUpper] = useState(TEMP.defaultTargetF);
+  const [middle, setMiddle] = useState(TEMP.defaultTargetF);
+  const [lower, setLower] = useState(TEMP.defaultTargetF);
+  const [pemfLevel, setPemfLevel] = useState(15);
   const [redLightOn, setRedLightOn] = useState(false);
-  const [timerMinutes, setTimerMinutes] = useState<number | null>(null);
+  const [timerMinutes, setTimerMinutes] = useState<number | null>(30);
   const [timerOpen, setTimerOpen] = useState(false);
   const [pemfOpen, setPemfOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
+      // If no profileId, we're in create mode
+      if (!params.profileId) {
+        setIsCreateMode(true);
+        setLoaded(true);
+        setName('');
+        return;
+      }
+
+      // Edit mode - load existing profile
       const list = await getZoneProfiles();
       const p = list.find((x) => x.id === params.profileId) || null;
       setInitial(p);
+      setIsCreateMode(false);
       if (p) {
         setName(p.name);
         setUpper(p.upper);
@@ -50,6 +66,7 @@ export default function ProfileEditScreen() {
         setRedLightOn(p.redLightOn);
         setTimerMinutes(p.timerMinutes);
       }
+      setLoaded(true);
     })();
   }, [getZoneProfiles, params.profileId]);
 
@@ -59,10 +76,9 @@ export default function ProfileEditScreen() {
   };
 
   const onSave = useCallback(async () => {
-    if (!initial) return;
-    const updated: ZoneProfile = {
-      ...initial,
-      name: name.trim() || initial.name,
+    const trimmedName = name.trim() || 'New Profile';
+    const profileData = {
+      name: trimmedName,
       upper: clamp(Number(upper), 'Upper'),
       middle: clamp(Number(middle), 'Middle'),
       lower: clamp(Number(lower), 'Lower'),
@@ -73,12 +89,25 @@ export default function ProfileEditScreen() {
           ? null
           : Math.max(5, Math.min(60, Math.round(Number(timerMinutes)))),
     };
-    await updateZoneProfile(updated);
-    Toast.show({ type: 'success', text1: 'Profile updated', text2: `"${updated.name}"` });
-    nav.goBack();
-  }, [initial, name, upper, middle, lower, pemfLevel, redLightOn, timerMinutes, updateZoneProfile, nav]);
 
-  if (!initial) {
+    if (isCreateMode) {
+      // Create new profile
+      await createZoneProfile(profileData);
+      Toast.show({ type: 'success', text1: 'Profile created', text2: `"${trimmedName}"` });
+    } else {
+      // Update existing profile
+      if (!initial) return;
+      const updated: ZoneProfile = {
+        ...initial,
+        ...profileData,
+      };
+      await updateZoneProfile(updated);
+      Toast.show({ type: 'success', text1: 'Profile updated', text2: `"${trimmedName}"` });
+    }
+    nav.goBack();
+  }, [isCreateMode, initial, name, upper, middle, lower, pemfLevel, redLightOn, timerMinutes, createZoneProfile, updateZoneProfile, nav]);
+
+  if (!loaded) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.outer }}>
         <Text style={{ ...typography.caption }}>Loading…</Text>
@@ -86,9 +115,18 @@ export default function ProfileEditScreen() {
     );
   }
 
+  if (!isCreateMode && !initial) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.outer }}>
+        <Text style={{ ...typography.caption }}>Profile not found</Text>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ padding: spacing.outer }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center' }}>
+      <ScrollView style={{ flex: 1, width: '100%', maxWidth: maxContentWidth }}>
+        <View style={{ padding: spacing.outer }}>
         {/* Name Input */}
         <View
           style={{
@@ -157,11 +195,11 @@ export default function ProfileEditScreen() {
         </View>
 
         {/* Feature Controls */}
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, ...(isLargeScreen && { height: 140 }) }}>
           <FeatureControl
             title="Red Light"
             value={redLightOn ? 'ON' : 'OFF'}
-            icon={<Sun size={20} />}
+            icon={<Sun size={isLargeScreen ? 28 : 20} />}
             onPress={() => setRedLightOn(!redLightOn)}
             variant="redlight"
             isActive={redLightOn}
@@ -169,14 +207,14 @@ export default function ProfileEditScreen() {
           <FeatureControl
             title="PEMF"
             value={pemfLevel === 0 ? 'Off' : `${pemfLevel} hz`}
-            icon={<Activity size={20} />}
+            icon={<Activity size={isLargeScreen ? 28 : 20} />}
             onPress={() => setPemfOpen(true)}
             variant="pemf"
           />
           <FeatureControl
             title="Timer"
             value={timerMinutes ? `${timerMinutes} min` : 'Off'}
-            icon={<TimerReset size={20} />}
+            icon={<TimerReset size={isLargeScreen ? 28 : 20} />}
             onPress={() => setTimerOpen(true)}
           />
         </View>
@@ -204,7 +242,8 @@ export default function ProfileEditScreen() {
             <Text style={{ fontSize: 16, fontWeight: '600', color: colors.textSecondary }}>Cancel</Text>
           </Pressable>
         </View>
-      </View>
+        </View>
+      </ScrollView>
 
       {/* Modals */}
       <TimerSheet
@@ -220,6 +259,6 @@ export default function ProfileEditScreen() {
         onClose={() => setPemfOpen(false)}
         onChange={(level) => setPemfLevel(level)}
       />
-    </ScrollView>
+    </View>
   );
 }

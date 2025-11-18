@@ -7,8 +7,6 @@ import {
   FlatList,
   Pressable,
   Alert,
-  Modal,
-  TextInput,
   Platform,
   ActionSheetIOS,
 } from 'react-native';
@@ -37,8 +35,6 @@ export default function ProfilesScreen() {
 
   const [profiles, setProfiles] = useState<ZoneProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nameOpen, setNameOpen] = useState(false);
-  const [nameValue, setNameValue] = useState('');
 
   const loadingRef = useRef(false);
 
@@ -65,9 +61,8 @@ export default function ProfilesScreen() {
   );
 
   const handleCreatePress = useCallback(() => {
-    setNameValue('');
-    setNameOpen(true);
-  }, []);
+    nav.navigate('ProfileEditScreen', { profileId: undefined });
+  }, [nav]);
 
   useLayoutEffect(() => {
     nav.setOptions({
@@ -75,7 +70,7 @@ export default function ProfilesScreen() {
       headerRight: () => (
         <Pressable
           onPress={handleCreatePress}
-          accessibilityLabel="Save current settings as a profile"
+          accessibilityLabel="Create new profile"
           style={{ paddingHorizontal: 12, paddingVertical: 6 }}
         >
           <Plus size={22} color={colors.textPrimary} />
@@ -265,18 +260,11 @@ export default function ProfilesScreen() {
     </Pressable>
   ), [applyProfile, openActions]);
 
-  const onConfirmCreate = useCallback(async () => {
-    const trimmed = nameValue.trim() || 'New Profile';
-    await saveZoneProfile(trimmed);
-    setNameOpen(false);
-    Toast.show({ type: 'success', text1: 'Profile saved', text2: `"${trimmed}"` });
-    load();
-  }, [nameValue, saveZoneProfile, load]);
 
   const EmptyComponent = useCallback(() => (
     <View style={{ padding: spacing.outer * 2, alignItems: 'center' }}>
       <Text style={{ ...typography.body, color: colors.textSecondary, textAlign: 'center' }}>
-        No profiles yet — Save your current settings to reuse later.
+        No profiles yet — Create a profile to save temperature settings.
       </Text>
       <Pressable
         onPress={handleCreatePress}
@@ -289,9 +277,9 @@ export default function ProfilesScreen() {
           paddingVertical: 10,
           paddingHorizontal: 16,
         }}
-        accessibilityLabel="Save current settings"
+        accessibilityLabel="Create new profile"
       >
-        <Text style={{ ...typography.body }}>Save Current Settings</Text>
+        <Text style={{ ...typography.body }}>Create Profile</Text>
       </Pressable>
     </View>
   ), [handleCreatePress]);
@@ -314,58 +302,6 @@ export default function ProfilesScreen() {
           }}
         />
       )}
-
-      <Modal visible={nameOpen} animationType="fade" transparent onRequestClose={() => setNameOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', padding: spacing.outer }}>
-          <View
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: radii.card,
-              padding: spacing.outer,
-              borderWidth: 1,
-              borderColor: colors.divider,
-            }}
-          >
-            <Text style={{ ...typography.h2, marginBottom: 8 }}>Save Profile</Text>
-            <Text style={{ ...typography.caption, marginBottom: 8 }}>
-              Name this set of temperatures and settings.
-            </Text>
-            <TextInput
-              value={nameValue}
-              onChangeText={setNameValue}
-              placeholder="e.g., Evening 145°"
-              placeholderTextColor={colors.textSecondary}
-              autoFocus
-              style={{
-                borderWidth: 1,
-                borderColor: colors.divider,
-                borderRadius: radii.chip,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                color: colors.textPrimary,
-              }}
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
-              <Pressable onPress={() => setNameOpen(false)} style={{ padding: 10, marginRight: 8 }}>
-                <Text style={{ ...typography.body, color: colors.textSecondary }}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={onConfirmCreate}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 14,
-                  borderRadius: radii.button,
-                  borderWidth: 1,
-                  borderColor: colors.divider,
-                  backgroundColor: colors.surfaceMuted,
-                }}
-              >
-                <Text style={{ ...typography.body }}>Save</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }

@@ -11,7 +11,7 @@ import ScheduleEditScreen from '../screens/ScheduleEditScreen';
 export type RootStackParamList = {
   Tabs: undefined;
   ProfilesScreen: undefined;
-  ProfileEditScreen: { profileId: string };
+  ProfileEditScreen: { profileId?: string };
   ScheduleEditScreen: { scheduleId?: string };
 };
 

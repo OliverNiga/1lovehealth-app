@@ -1,6 +1,6 @@
 // 2-space indentation
 
-import { storage } from '../utils/storage';
+import { storage, loadNotificationSettings } from '../utils/storage';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { MockSaunaController as Mock } from '../controllers/MockSaunaController';
 import type {
@@ -72,6 +72,7 @@ type ControllerAPI = {
   saveZoneProfile(name: string): Promise<void>;
   getZoneProfiles(): Promise<ZoneProfile[]>;
   loadZoneProfile(id: string): Promise<void>;
+  createZoneProfile(data: Omit<ZoneProfile, 'id' | 'createdAt'>): Promise<void>;
   renameZoneProfile(id: string, name: string): Promise<void>;
   deleteZoneProfile(id: string): Promise<void>;
   updateZoneProfile(updated: ZoneProfile): Promise<void>;
@@ -110,7 +111,6 @@ export function useSaunaController(): ControllerAPI {
   const [lastError, setLastError] = useState<string | undefined>(undefined);
 
   // notifications + hydration
-  const readyFiredRef = useRef<boolean>(false);
   const readyNotifId = useRef<string | undefined>(undefined);
   const warnNotifId = useRef<string | undefined>(undefined);
   const endNotifId = useRef<string | undefined>(undefined);
@@ -277,15 +277,37 @@ export function useSaunaController(): ControllerAPI {
 
   // ---- notifications logic
   useEffect(() => {
-    if (isOn && !readyFiredRef.current && currentTempF >= targetTempF - 0.5) {
-      readyFiredRef.current = true;
-      if (readyNotifId.current) cancelNotification(readyNotifId.current).catch(() => {});
-      scheduleInSeconds(1, 'Sauna Ready', `Reached ${Math.round(targetTempF)}°`).then(
-        (id) => (readyNotifId.current = id),
-        () => {}
-      );
+    if (!isOn) return;
+
+    // Find the highest target temperature across all zones
+    const highestTarget = Math.max(zoneTargets.Upper, zoneTargets.Middle, zoneTargets.Lower);
+    // Find the highest current temperature across all zones
+    const highestCurrent = Math.max(zoneCurrents.Upper, zoneCurrents.Middle, zoneCurrents.Lower);
+
+    // Check if temperature threshold is reached AND controller says we should fire
+    if (highestCurrent >= highestTarget - 0.5 && Mock.shouldFireReadyNotification(highestTarget)) {
+      // CRITICAL: Mark notification as fired in the singleton controller
+      Mock.markReadyNotificationFired(highestTarget);
+
+      // Cancel any existing notification
+      if (readyNotifId.current) {
+        cancelNotification(readyNotifId.current).catch(() => {});
+        readyNotifId.current = undefined;
+      }
+
+      // Check notification settings before firing
+      loadNotificationSettings().then((settings) => {
+        if (!settings.enabled || !settings.saunaReady) return;
+
+        scheduleInSeconds(1, 'Sauna Ready', `Reached ${Math.round(highestTarget)}°`).then(
+          (id) => {
+            readyNotifId.current = id;
+          },
+          () => {}
+        );
+      });
     }
-  }, [isOn, currentTempF, targetTempF]);
+  }, [isOn, zoneCurrents, zoneTargets]);
 
   useEffect(() => {
     if (warnNotifId.current) cancelNotification(warnNotifId.current).catch(() => {});
@@ -294,24 +316,34 @@ export function useSaunaController(): ControllerAPI {
     endNotifId.current = undefined;
 
     if (timerMinutes && timerMinutes > 0) {
-      const total = timerMinutes * 60;
-      const warn = total - 300; // 5 min before end
-      if (warn > 0) {
-        scheduleInSeconds(warn, '5 Minutes Left', 'Extend if you like').then(
-          (id) => (warnNotifId.current = id),
-          () => {}
-        );
-      }
-      scheduleInSeconds(total, 'Session Finished', 'Sauna turned off').then(
-        (id) => (endNotifId.current = id),
-        () => {}
-      );
+      loadNotificationSettings().then((settings) => {
+        if (!settings.enabled) return;
+
+        const total = timerMinutes * 60;
+        const warn = total - 300; // 5 min before end
+
+        // Schedule timer warning if enabled
+        if (warn > 0 && settings.timerWarnings) {
+          scheduleInSeconds(warn, '5 Minutes Left', 'Extend if you like').then(
+            (id) => (warnNotifId.current = id),
+            () => {}
+          );
+        }
+
+        // Schedule session complete if enabled
+        if (settings.sessionComplete) {
+          scheduleInSeconds(total, 'Session Finished', 'Sauna turned off').then(
+            (id) => (endNotifId.current = id),
+            () => {}
+          );
+        }
+      });
     }
   }, [timerMinutes]);
 
   useEffect(() => {
     if (!isOn) {
-      readyFiredRef.current = false;
+      // Note: notification tracking is now handled in MockSaunaController.stopSauna()
       if (readyNotifId.current) cancelNotification(readyNotifId.current).catch(() => {});
       if (warnNotifId.current) cancelNotification(warnNotifId.current).catch(() => {});
       if (endNotifId.current) cancelNotification(endNotifId.current).catch(() => {});
@@ -323,7 +355,7 @@ export function useSaunaController(): ControllerAPI {
 
   // ---- actions
   const startSauna = useCallback(async () => {
-    readyFiredRef.current = false;
+    // Note: notification tracking reset is now handled in MockSaunaController.startSauna()
     if (readyNotifId.current) cancelNotification(readyNotifId.current).catch(() => {});
     await Mock.startSauna();
   }, []);
@@ -488,11 +520,12 @@ export function useSaunaController(): ControllerAPI {
     console.log('All setState calls completed');
     console.log('=== LOAD ZONE PROFILE END ===');
 
-    // Reset ready notification if target is higher than current
+    // Reset ready notification if any new target is higher than current highest zone
     setZoneCurrents((currents) => {
-      const currentAvg = computeCurrentAvg(currents);
-      if (p.upper > currentAvg || p.middle > currentAvg || p.lower > currentAvg) {
-        readyFiredRef.current = false;
+      const highestCurrent = Math.max(currents.Upper, currents.Middle, currents.Lower);
+      const highestNewTarget = Math.max(upperClamped, middleClamped, lowerClamped);
+      if (highestNewTarget > highestCurrent) {
+        Mock.resetReadyNotification();
       }
       return currents; // Don't modify currents
     });
@@ -508,6 +541,16 @@ export function useSaunaController(): ControllerAPI {
     const list = await loadProfiles();
     const next = list.filter((p) => p.id !== id);
     await saveProfiles(next);
+  }, []);
+
+  const createZoneProfile = useCallback(async (data: Omit<ZoneProfile, 'id' | 'createdAt'>) => {
+    const list = await loadProfiles();
+    const newProfile: ZoneProfile = {
+      id: nanoid(),
+      createdAt: Date.now(),
+      ...data,
+    };
+    await saveProfiles([newProfile, ...list].slice(0, 20));
   }, []);
 
   const updateZoneProfile = useCallback(async (updated: ZoneProfile) => {
@@ -597,6 +640,7 @@ export function useSaunaController(): ControllerAPI {
     saveZoneProfile,
     getZoneProfiles,
     loadZoneProfile,
+    createZoneProfile,
     renameZoneProfile,
     deleteZoneProfile,
     updateZoneProfile,

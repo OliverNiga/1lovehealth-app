@@ -95,6 +95,38 @@ export default function PEMFSheet({ visible, level, onClose, onChange }: Props) 
             </Pressable>
           </View>
 
+          {/* PEMF Frequency Chart */}
+          <View style={{ marginTop: 16, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 16 }}>
+            {/* Header rows */}
+            <View style={{ marginBottom: 12, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginBottom: 4 }}>
+                Lower Frequencies = Relaxing
+              </Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827' }}>
+                Higher Frequencies = Stimulating
+              </Text>
+            </View>
+
+            {/* Frequency ranges */}
+            <View style={{ gap: 8, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: '#3B82F6', textAlign: 'center' }}>
+                <Text style={{ fontWeight: '600' }}>Delta (1-4 Hz):</Text> Relaxation, Stress Relief, Sleep
+              </Text>
+
+              <Text style={{ fontSize: 13, color: '#10B981', textAlign: 'center' }}>
+                <Text style={{ fontWeight: '600' }}>Theta (4-8 Hz):</Text> Relaxation, Clarity, Creativity
+              </Text>
+
+              <Text style={{ fontSize: 13, color: '#F59E0B', textAlign: 'center' }}>
+                <Text style={{ fontWeight: '600' }}>Alpha (8-12 Hz):</Text> Relaxation, Focus, Mindfulness
+              </Text>
+
+              <Text style={{ fontSize: 13, color: '#EF4444', textAlign: 'center' }}>
+                <Text style={{ fontWeight: '600' }}>Beta (12-30 Hz):</Text> Alertness, Cognitive Function
+              </Text>
+            </View>
+          </View>
+
           {/* Wheel (no gray center highlight) */}
           <View
             style={{
