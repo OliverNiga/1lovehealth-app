@@ -1,4 +1,4 @@
-# SaunaGlow — Smart Sauna Controller
+# 1Love Health — Smart Sauna Controller
 
 A React Native mobile app for controlling a WiFi-enabled infrared sauna dome. Built for 1Love Health, SaunaGlow lets you manage temperature zones, therapeutic features, saved profiles, and recurring schedules — all from your phone.
 
