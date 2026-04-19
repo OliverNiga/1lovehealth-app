@@ -88,5 +88,3 @@ App
 | `src/screens/ProfilesScreen.tsx` | Profile management |
 | `src/screens/ScheduleScreen.tsx` | Recurring schedule management |
 | `src/utils/scheduleManager.ts` | Schedule execution and notification scheduling |
-
----
